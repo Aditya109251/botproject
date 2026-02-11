@@ -64,7 +64,7 @@ async def call_llm(user_text: str, user_id: str) -> str:
         ],
     }
 
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    async with httpx.AsyncClient(timeout=25.0) as client:
         resp = await client.post(LLM_ENDPOINT, headers=headers, json=body)
         resp.raise_for_status()
         data = resp.json()
