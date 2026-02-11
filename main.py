@@ -9,7 +9,8 @@ app = FastAPI()
 # ---- LLM config (from env) ----
 LLM_TOKEN = os.getenv("LLM_TOKEN")             # OpenRouter key (already set on Render)
 LLM_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
-LLM_MODEL = os.getenv("LLM_MODEL", "openai/gpt-4.1-mini")  # ya jo bhi model use karna ho
+LLM_MODEL = os.getenv("LLM_MODEL", "openrouter/free")
+ # ya jo bhi model use karna ho
 
 class BotRequest(BaseModel):
     user_text: str
