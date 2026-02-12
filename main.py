@@ -6,10 +6,9 @@ import httpx
 
 app = FastAPI()
 
-# ---- LLM config (from env) ----
-LLM_TOKEN = os.getenv("LLM_TOKEN")             # OpenRouter key (set on Render)
+LLM_TOKEN = os.getenv("LLM_TOKEN")
 LLM_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
-LLM_MODEL = os.getenv("LLM_MODEL", "openrouter/free")  # model name
+LLM_MODEL = os.getenv("LLM_MODEL", "openrouter/free")
 
 class BotRequest(BaseModel):
     user_text: str
@@ -29,10 +28,6 @@ def classify_emotion(text: str) -> str:
     return "NEUTRAL"
 
 async def call_llm(user_text: str, user_id: str) -> str:
-    """
-    Call OpenRouter chat completion and return model's reply text.
-    If token missing, simple echo.
-    """
     if not LLM_TOKEN:
         now = datetime.now().strftime("%H:%M:%S")
         return f"[{now}] Robot: You said -> {user_text}"
@@ -64,7 +59,7 @@ async def call_llm(user_text: str, user_id: str) -> str:
 
     async with httpx.AsyncClient(timeout=25.0) as client:
         resp = await client.post(LLM_ENDPOINT, headers=headers, json=body)
-        # If OpenRouter returns any HTTP error, raise here
+        # Agar yahan error hua to fastapi tak propagate hoga
         resp.raise_for_status()
         data = resp.json()
         reply = data["choices"][0]["message"]["content"]
@@ -76,22 +71,18 @@ async def root():
 
 @app.post("/bot", response_model=BotResponse)
 async def bot_endpoint(req: BotRequest):
-    # 1) get AI reply from LLM, but never crash
     try:
         reply_text = await call_llm(req.user_text, req.user_id)
     except Exception as e:
-        # Debug log for Render
+        # Yahan kabhi bhi 500 nahi bhejenge; hamesha valid JSON
         print("LLM error:", repr(e))
         now = datetime.now().strftime("%H:%M:%S")
         reply_text = (
-            f"[{now}] (fallback) I am having trouble with my AI brain, "
+            f"[{now}] (fallback) My AI brain has an issue, "
             f"but I heard you said: {req.user_text}"
         )
 
-    # 2) simple emotion classifier on reply text
     emotion = classify_emotion(reply_text)
-
-    # 3) placeholder audio URL
     fake_audio_url = "https://example.com/no-audio-yet"
 
     return BotResponse(
