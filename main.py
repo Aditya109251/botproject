@@ -7,10 +7,9 @@ import httpx
 app = FastAPI()
 
 # ---- LLM config (from env) ----
-LLM_TOKEN = os.getenv("LLM_TOKEN")             # OpenRouter key (already set on Render)
+LLM_TOKEN = os.getenv("LLM_TOKEN")             # OpenRouter key (set on Render)
 LLM_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
-LLM_MODEL = os.getenv("LLM_MODEL", "openrouter/free")
- # ya jo bhi model use karna ho
+LLM_MODEL = os.getenv("LLM_MODEL", "openrouter/free")  # model name
 
 class BotRequest(BaseModel):
     user_text: str
@@ -32,17 +31,16 @@ def classify_emotion(text: str) -> str:
 async def call_llm(user_text: str, user_id: str) -> str:
     """
     Call OpenRouter chat completion and return model's reply text.
+    If token missing, simple echo.
     """
     if not LLM_TOKEN:
-        # fallback: simple echo
         now = datetime.now().strftime("%H:%M:%S")
         return f"[{now}] Robot: You said -> {user_text}"
 
     headers = {
         "Authorization": f"Bearer {LLM_TOKEN}",
         "Content-Type": "application/json",
-        # optional but recommended per docs:
-        "HTTP-Referer": "https://botproject-esp32",   # koi bhi string
+        "HTTP-Referer": "https://botproject-esp32",
         "X-Title": "ESP32 CampusBot",
     }
 
@@ -66,9 +64,9 @@ async def call_llm(user_text: str, user_id: str) -> str:
 
     async with httpx.AsyncClient(timeout=25.0) as client:
         resp = await client.post(LLM_ENDPOINT, headers=headers, json=body)
+        # If OpenRouter returns any HTTP error, raise here
         resp.raise_for_status()
         data = resp.json()
-        # OpenRouter uses OpenAI-style schema [web:150][web:151][web:156]
         reply = data["choices"][0]["message"]["content"]
         return reply
 
@@ -78,13 +76,22 @@ async def root():
 
 @app.post("/bot", response_model=BotResponse)
 async def bot_endpoint(req: BotRequest):
-    # 1) get AI reply from LLM
-    reply_text = await call_llm(req.user_text, req.user_id)
+    # 1) get AI reply from LLM, but never crash
+    try:
+        reply_text = await call_llm(req.user_text, req.user_id)
+    except Exception as e:
+        # Debug log for Render
+        print("LLM error:", repr(e))
+        now = datetime.now().strftime("%H:%M:%S")
+        reply_text = (
+            f"[{now}] (fallback) I am having trouble with my AI brain, "
+            f"but I heard you said: {req.user_text}"
+        )
 
     # 2) simple emotion classifier on reply text
     emotion = classify_emotion(reply_text)
 
-    # 3) placeholder audio URL (speaker not ready yet)
+    # 3) placeholder audio URL
     fake_audio_url = "https://example.com/no-audio-yet"
 
     return BotResponse(
