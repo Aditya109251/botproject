@@ -3,12 +3,16 @@ from pydantic import BaseModel
 from datetime import datetime
 import os
 import httpx
+from dotenv import load_dotenv
+
+# Load .env (for local dev; Render pe env UI se aayega)
+load_dotenv()
 
 app = FastAPI()
 
 LLM_TOKEN = os.getenv("LLM_TOKEN")
+LLM_MODEL = os.getenv("LLM_MODEL", "mistral-7b-instruct:free")
 LLM_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
-LLM_MODEL = os.getenv("LLM_MODEL", "openrouter/free")
 
 class BotRequest(BaseModel):
     user_text: str
@@ -28,6 +32,7 @@ def classify_emotion(text: str) -> str:
     return "NEUTRAL"
 
 async def call_llm(user_text: str, user_id: str) -> str:
+    # Agar token missing hai to simple echo
     if not LLM_TOKEN:
         now = datetime.now().strftime("%H:%M:%S")
         return f"[{now}] Robot: You said -> {user_text}"
@@ -35,7 +40,7 @@ async def call_llm(user_text: str, user_id: str) -> str:
     headers = {
         "Authorization": f"Bearer {LLM_TOKEN}",
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://botproject-esp32",
+        "HTTP-Referer": "https://esp32-bot",   # koi bhi string
         "X-Title": "ESP32 CampusBot",
     }
 
@@ -46,8 +51,7 @@ async def call_llm(user_text: str, user_id: str) -> str:
                 "role": "system",
                 "content": (
                     "You are a friendly small campus desk robot. "
-                    "Reply briefly (1-2 sentences), in simple English; "
-                    "user id may be used just for personalization."
+                    "Reply in 1-2 short sentences, simple English."
                 ),
             },
             {
@@ -57,24 +61,21 @@ async def call_llm(user_text: str, user_id: str) -> str:
         ],
     }
 
-    async with httpx.AsyncClient(timeout=25.0) as client:
+    async with httpx.AsyncClient(timeout=12.0) as client:
         resp = await client.post(LLM_ENDPOINT, headers=headers, json=body)
-        # Agar yahan error hua to fastapi tak propagate hoga
         resp.raise_for_status()
         data = resp.json()
-        reply = data["choices"][0]["message"]["content"]
-        return reply
+        return data["choices"][0]["message"]["content"]
 
 @app.get("/")
 async def root():
-    return {"status": "ok", "message": "ESP32 bot backend running with LLM"}
+    return {"status": "ok", "message": "ESP32 bot backend running with OpenRouter LLM"}
 
 @app.post("/bot", response_model=BotResponse)
 async def bot_endpoint(req: BotRequest):
     try:
         reply_text = await call_llm(req.user_text, req.user_id)
     except Exception as e:
-        # Yahan kabhi bhi 500 nahi bhejenge; hamesha valid JSON
         print("LLM error:", repr(e))
         now = datetime.now().strftime("%H:%M:%S")
         reply_text = (
@@ -83,7 +84,7 @@ async def bot_endpoint(req: BotRequest):
         )
 
     emotion = classify_emotion(reply_text)
-    fake_audio_url = "https://example.com/no-audio-yet"
+    fake_audio_url = ""
 
     return BotResponse(
         reply_text=reply_text,
